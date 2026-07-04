@@ -5,7 +5,7 @@ New-Item -ItemType Directory -Force -Path build | Out-Null
 Set-Location build
 
 if (-not (Test-Path "meshoptimizer")) {
-	git clone https://github.com/zeux/meshoptimizer.git --revision b22872835dbabc56a6e4a366ea9917f62b7daf1a -c advice.detachedHead=false
+	git clone -b v1.2 https://github.com/zeux/meshoptimizer.git -c advice.detachedHead=false
 }
 
 Write-Host "Compiling meshoptimizer..."

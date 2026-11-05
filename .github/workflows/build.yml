@@ -31,7 +31,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path build | Out-Null
-          odin build tests/canary.odin -collection:meshopt=. -out:build/canary.exe
+          odin build tests/canary.odin -file -collection:meshopt=. -out:build/canary.exe
           & .\build\canary.exe
 
       - uses: actions/upload-artifact@v4
@@ -55,7 +55,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build
-          odin build tests/canary.odin -collection:meshopt=. -out:build/canary
+          odin build tests/canary.odin -file -collection:meshopt=. -out:build/canary
           ./build/canary
 
       - uses: actions/upload-artifact@v4

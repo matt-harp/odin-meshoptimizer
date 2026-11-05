@@ -2,15 +2,18 @@
 set -e
 
 root_dir=$(pwd)
+
+version=$(cat meshoptimizer_tag)
+
 mkdir -p build
 cd build
 
 if [ ! -d "meshoptimizer" ]
 then
-	git clone https://github.com/zeux/meshoptimizer.git --branch v1.3 -c advice.detachedHead=false
+	git clone -b "$version" https://github.com/zeux/meshoptimizer.git -c advice.detachedHead=false
 fi
 
-echo "Compiling meshoptimizer..."
+echo "Compiling meshoptimizer ($version)..."
 
 cd meshoptimizer
 make -s config=release build/release/libmeshoptimizer.a

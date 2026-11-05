@@ -1,0 +1,55 @@
+name: build
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build meshoptimizer (Windows)
+        shell: pwsh
+        run: ./build.ps1
+
+      - uses: laytan/setup-odin@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compile and run canary (Windows)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build | Out-Null
+          odin build tests/canary.odin -collection:meshopt=. -out:build/canary.exe
+          & .\build\canary.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: meshoptimizer-windows
+          path: meshoptimizer.lib
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build meshoptimizer (Linux)
+        run: bash ./build.sh
+
+      - uses: laytan/setup-odin@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compile and run canary (Linux)
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          odin build tests/canary.odin -collection:meshopt=. -out:build/canary
+          ./build/canary
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: meshoptimizer-linux
+          path: libmeshoptimizer.a

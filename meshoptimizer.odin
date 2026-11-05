@@ -1,5 +1,5 @@
 /**
- * meshoptimizer - version 1.2
+ * meshoptimizer - version 1.3
  *
  * Copyright (C) 2016-2026, by Arseny Kapoulkine (arseny.kapoulkine@gmail.com)
  * Report bugs and download new versions at https://github.com/zeux/meshoptimizer
@@ -19,7 +19,7 @@ when ODIN_OS == .Windows {
 import "core:c"
 
 /* Version macro; major * 1000 + minor * 10 + patch */
-MESHOPTIMIZER_VERSION :: 1020 /* 1.2 */
+MESHOPTIMIZER_VERSION :: 1030 /* 1.3 */
 
 /**
 * Vertex attribute stream
@@ -87,7 +87,7 @@ foreign lib {
 	meshopt_remapIndexBuffer :: proc(destination: ^u32, indices: ^u32, index_count: c.size_t, remap: ^u32) ---
 
 	/**
-	* Experimental: Filter out redundant triangles from the index buffer and return the number of remaining indices
+	* Filter out redundant triangles from the index buffer and return the number of remaining indices
 	* Triangles are considered redundant if they are degenerate (two vertices have the same vertex key) or duplicate (matching triangle was present earlier).
 	* First vertex_size bytes of every vertex are compared for equality; typically vertex_size should be set to the size of the position attribute.
 	* Note that duplicate triangles with opposite windings are preserved, as they may be needed for double-sided rendering.
@@ -97,7 +97,7 @@ foreign lib {
 	meshopt_filterIndexBuffer :: proc(destination: ^u32, indices: ^u32, index_count: c.size_t, vertices: rawptr, vertex_count: c.size_t, vertex_size: c.size_t, vertex_stride: c.size_t) -> c.size_t ---
 
 	/**
-	* Experimental: Filter out redundant triangles from the index buffer and return the number of remaining indices
+	* Filter out redundant triangles from the index buffer and return the number of remaining indices
 	* Triangles are considered redundant if they are degenerate (two vertices have the same vertex key) or duplicate (matching triangle was present earlier).
 	* All bytes in specified streams are compared for equality; streams should include attributes relevant for position transform (e.g. bone influences).
 	* Note that duplicate triangles with opposite windings are preserved, as they may be needed for double-sided rendering.
@@ -427,7 +427,7 @@ foreign lib {
 * Each component is stored as an 8-bit or 16-bit integer; stride must be equal to 4 (K <= 8) or 8 (K <= 16).
 * Input data must contain 4 floats for every color (count*4 total).
 */
-meshopt_EncodeExpMode :: enum i32 {
+meshopt_EncodeExpMode :: enum u32 {
 	/* When encoding exponents, use separate values for each component (maximum quality) */
 	Separate        = 0,
 
@@ -456,6 +456,8 @@ meshopt_SimplifyRegularize      :: 16
 meshopt_SimplifyPermissive      :: 32
 meshopt_SimplifyRegularizeLight :: 64
 meshopt_SimplifySparse          :: 2
+meshopt_SimplifyPreserveFolds   :: 128
+meshopt_SimplifyErrorClamped    :: 256
 meshopt_SimplifyVertex_Lock     :: 1
 meshopt_SimplifyVertex_Priority :: 4
 meshopt_SimplifyVertex_Protect  :: 2
@@ -861,7 +863,7 @@ foreign lib {
 	meshopt_spatialClusterPoints :: proc(destination: ^u32, vertex_positions: ^f32, vertex_count: c.size_t, vertex_positions_stride: c.size_t, cluster_size: c.size_t) ---
 
 	/**
-	* Experimental: Opacity micromap generator (measure)
+	* Opacity micromap generator (measure)
 	* Computes a subdivision level for each input triangle, as well as deduplicating the triangles that reference the same UVs to reduce rasterization requests.
 	* Returns the number of OMM entries.
 	*
@@ -875,7 +877,7 @@ foreign lib {
 	meshopt_opacityMapMeasure :: proc(levels: ^u8, sources: ^u32, omm_indices: ^i32, indices: ^u32, index_count: c.size_t, vertex_uvs: ^f32, vertex_count: c.size_t, vertex_uvs_stride: c.size_t, texture_width: u32, texture_height: u32, max_level: i32, target_edge: f32) -> c.size_t ---
 
 	/**
-	* Experimental: Opacity micromap generator (rasterize)
+	* Opacity micromap generator (rasterize)
 	* Rasterizes opacity state for a single triangle entry by sampling the alpha texture, using bilinear filtering and 0.5 alpha cutoff.
 	*
 	* result should contain enough space for the output opacity data (which can be computed using meshopt_opacityMapEntrySize)
@@ -890,7 +892,7 @@ foreign lib {
 	meshopt_opacityMapEntrySize :: proc(level: i32, states: i32) -> c.size_t ---
 
 	/**
-	* Experimental: Opacity micromap generator (compact)
+	* Opacity micromap generator (compact)
 	* Compacts and deduplicates opacity data, merging identical micromap entries and replacing micromap states with special indices (-4..-1) when possible.
 	* Returns the number of OMM entries after compaction; the data array should be trimmed using the last offset/size.
 	*
@@ -910,12 +912,12 @@ meshopt_TangentZeroFallback :: 2
 @(default_calling_convention="c")
 foreign lib {
 	/**
-	* Experimental: Tangent space generator
+	* Tangent space generator
 	* Computes per-corner tangent vectors; for each corner, computes normalized tangent vector (xyz) and orientation (w, +/-1).
 	* Bitangent can be reconstructed via cross(normal, tangent.xyz) * tangent.w.
 	* To apply tangents to the mesh, either deindex and reindex it with the tangent stream, or copy tangents to existing vertex data while duplicating
 	* vertices with different tangent vectors (e.g. on UV mirror seams).
-	* Input can be indexed or unindexed (indices=NULL); this does not affect the resulting tangents, but indexed inputs are ~30% faster to process.
+	* Input can be indexed or unindexed (indices=NULL); this does not affect the resulting tangents, but indexed inputs are faster to process.
 	*
 	* result must contain enough space for the output tangent data (index_count*4 elements)
 	* indices can be NULL if the input is unindexed
@@ -924,6 +926,41 @@ foreign lib {
 	* vertex_uvs should have float2 texture coordinate in the first 8 bytes of each vertex
 	*/
 	meshopt_generateTangents :: proc(result: ^f32, indices: ^u32, index_count: c.size_t, vertex_positions: ^f32, vertex_count: c.size_t, vertex_positions_stride: c.size_t, vertex_normals: ^f32, vertex_normals_stride: c.size_t, vertex_uvs: ^f32, vertex_uvs_stride: c.size_t, options: u32) ---
+
+	/**
+	* Experimental: Normal generator
+	* Computes per-corner normal vectors; normals are averaged across soft edges, using crease angle to determine which edges are hard.
+	* To apply normals to the mesh, either deindex and reindex it with the normal stream, or copy normals to existing vertex data while duplicating
+	* vertices with different normal vectors (on normal seams).
+	* Input can be indexed or unindexed (indices=NULL); this does not affect the resulting normals, but indexed inputs are faster to process.
+	*
+	* result must contain enough space for the output normal data (index_count*3 elements)
+	* indices can be NULL if the input is unindexed
+	* vertex_positions should have float3 position in the first 12 bytes of each vertex
+	* crease_angle specifies the angle in radians below which normals are averaged across edges
+	* smoothing specifies the amount of smoothing to apply to resulting normals as a post-process; larger smoothing values take longer, with the recommended range being [0..5].
+	*/
+	meshopt_generateNormals :: proc(result: ^f32, indices: ^u32, index_count: c.size_t, vertex_positions: ^f32, vertex_count: c.size_t, vertex_positions_stride: c.size_t, crease_angle: f32, smoothing: f32) ---
+}
+
+meshopt_RemeshShell :: 1
+meshopt_RemeshSolve :: 2
+
+@(default_calling_convention="c")
+foreign lib {
+	/**
+	* Experimental: Voxel remesher
+	* Generates a new mesh that approximates or refines the original mesh, attempting to preserve mesh appearance at a given voxel resolution.
+	* The original topology is not preserved; features that are closer than the voxel size may be merged, and small gaps in the original mesh may be closed.
+	* Returns the number of triangles in the new mesh, with destination containing a vertex position for each triangle corner.
+	*
+	* destination can be NULL; when it's not NULL, it must contain enough space for the resulting triangle buffer (max_triangle_count * 3 vertices, 3 floats per vertex)
+	* max_triangle_count is the number of triangles that can be written; when destination is NULL or insufficiently large, the returned value is an upper bound on the number of triangles
+	* vertex_positions should have float3 position in the first 12 bytes of each vertex
+	* resolution is the dimension of the internal voxel grid and should be in the range [4, 256]
+	* options must be a bitmask composed of meshopt_RemeshX options; 0 is a safe default
+	*/
+	meshopt_remesh :: proc(destination: ^f32, max_triangle_count: c.size_t, indices: ^u32, index_count: c.size_t, vertex_positions: ^f32, vertex_count: c.size_t, vertex_positions_stride: c.size_t, resolution: i32, options: u32) -> c.size_t ---
 
 	/**
 	* Quantize a float into half-precision (as defined by IEEE-754 fp16) floating point value
@@ -947,7 +984,7 @@ foreign lib {
 	meshopt_dequantizeHalf :: proc(h: u16) -> f32 ---
 
 	/**
-	* Experimental: Compute shared exponent suitable for mesh/cluster position quantization
+	* Compute shared exponent suitable for mesh/cluster position quantization
 	* Given mesh or cluster bounds, compute a shared exponent that can be used to quantize any position inside the bounds to a 24-bit integer grid.
 	* The resulting output can be stored as a compact bit-stream to be decoded directly in shaders, or to be used as an input to RT BVH builders,
 	* for example via D3D12_VERTEX_FORMAT_COMPRESSED1 in DXR2 (max_bits=16).
@@ -958,7 +995,7 @@ foreign lib {
 	* The resulting integer can be stored as signed 24-bit, or as an unsigned offset from a signed 24-bit anchor value, shared between all positions.
 	*
 	* minv/maxv specify the axis-aligned bounding box of the mesh or cluster; each should refer to a float3 value
-	* min_exp specifies the minimum value for the returned exponent, limiting precision to reduce size; e.g. min_exp = -10 will produce minimum error of 1mm given metric units
+	* min_exp specifies the minimum value for the returned exponent, limiting precision to reduce size; e.g. min_exp = -10 limits precision to 1mm given metric units
 	* max_bits specifies the maximum allowed number of bits for the quantized integer range (offset from anchor is an unsigned integer up to 2^max_bits-1)
 	*/
 	meshopt_computePositionExponent :: proc(minv: ^f32, maxv: ^f32, min_exp: i32, max_bits: i32) -> i32 ---

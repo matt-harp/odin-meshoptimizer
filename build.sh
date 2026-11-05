@@ -7,7 +7,7 @@ cd build
 
 if [ ! -d "meshoptimizer" ]
 then
-	git clone https://github.com/zeux/meshoptimizer.git --revision b22872835dbabc56a6e4a366ea9917f62b7daf1a -c advice.detachedHead=false
+	git clone https://github.com/zeux/meshoptimizer.git --branch v1.3 -c advice.detachedHead=false
 fi
 
 echo "Compiling meshoptimizer..."

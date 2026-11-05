@@ -11,6 +11,7 @@ package meshopt
 when ODIN_OS == .Windows {
 	foreign import lib "meshoptimizer.lib"
 } else when ODIN_OS == .Linux {
+	@(extra_linker_flags="-lstdc++")
 	foreign import lib "libmeshoptimizer.a"
 } else {
 	#panic("Could not find the compiled meshoptimizer library for " + ODIN_OS)
@@ -1011,4 +1012,3 @@ foreign lib {
 	*/
 	meshopt_setAllocator :: proc(allocate: proc "c" (c.size_t) -> rawptr, deallocate: proc "c" (rawptr)) ---
 }
-

@@ -4,6 +4,15 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+  actions: write
+
+# Serialize runs so two pushes can't commit/push on top of each other concurrently.
+concurrency:
+  group: build-and-commit
+  cancel-in-progress: false
+
 jobs:
   windows:
     runs-on: windows-latest
@@ -22,7 +31,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path build | Out-Null
-          odin build tests/canary.odin -file -collection:meshopt=. -out:build/canary.exe
+          odin build tests/canary.odin -collection:meshopt=. -out:build/canary.exe
           & .\build\canary.exe
 
       - uses: actions/upload-artifact@v4
@@ -46,10 +55,45 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build
-          odin build tests/canary.odin -file -collection:meshopt=. -out:build/canary
+          odin build tests/canary.odin -collection:meshopt=. -out:build/canary
           ./build/canary
 
       - uses: actions/upload-artifact@v4
         with:
           name: meshoptimizer-linux
           path: libmeshoptimizer.a
+
+  commit:
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Windows library
+        uses: actions/download-artifact@v4
+        with:
+          name: meshoptimizer-windows
+          path: artifacts
+
+      - name: Download Linux library
+        uses: actions/download-artifact@v4
+        with:
+          name: meshoptimizer-linux
+          path: artifacts
+
+      - name: Commit and push libraries
+        run: |
+          set -euo pipefail
+          cp artifacts/meshoptimizer.lib meshoptimizer.lib
+          cp artifacts/libmeshoptimizer.a libmeshoptimizer.a
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add meshoptimizer.lib libmeshoptimizer.a
+
+          if git diff --cached --quiet; then
+            echo "Library files are unchanged; nothing to commit."
+          else
+            git commit -m "build: refresh meshoptimizer libraries [skip ci]"
+            git push
+          fi
